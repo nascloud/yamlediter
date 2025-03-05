@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  yamleditor:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - docker.env
+    volumes:
+      - ./workspace:/app/workspace  # 挂载到容器内的/app/workspace
+    user: "${UID}:${GID}"          # 使用当前用户权限
+    restart: unless-stopped 

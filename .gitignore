@@ -1,0 +1,76 @@
+# 环境配置
+.env
+docker.env
+*.env
+!docker.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+*.so
+
+# Node
+node_modules/
+dist/
+.DS_Store
+
+# 编辑器
+.vscode/
+.idea/
+
+# 项目特定
+workspace/
+*.log
+
+# Python相关
+.venv/
+venv/
+backend/venv/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+.pytest_cache/
+
+# 前端相关
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# 历史文件
+history/
+*/history/
+config/history/
+
+# IDE配置
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# 操作系统相关
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日志和数据库
+*.log
+*.sqlite
+*.db
+
+# 环境变量和密钥(但保留示例文件)
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 其他
+.coverage
+coverage/
+.nyc_output/
