@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 
 services:
   yamleditor:
@@ -9,5 +9,4 @@ services:
       - docker.env
     volumes:
       - ./workspace:/app/workspace  # 挂载到容器内的/app/workspace
-    user: "${UID}:${GID}"          # 使用当前用户权限
     restart: unless-stopped 

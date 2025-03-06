@@ -48,6 +48,7 @@ services:
 ```
 
 启动服务：
+
 ```bash
 docker-compose up -d
 ```
@@ -72,43 +73,48 @@ docker run -d \
 
 ### 环境变量
 
-| 变量名 | 说明 | 默认值 | 建议 |
-|--------|------|--------|------|
-| APP_PASSWORD | 登录密码 | admin123 | 生产环境必须修改 |
-| JWT_SECRET | JWT密钥 | your_jwt_secret_key | 使用随机字符串 |
-| WORKSPACE_DIR | 工作目录 | /app/workspace | 建议保持默认 |
-| ALLOW_ORIGINS | CORS配置 | * | 生产环境应限制 |
-| TZ | 时区设置 | Asia/Shanghai | 按需修改 |
+| 变量名           | 说明     | 默认值                 | 建议       |
+| ------------- | ------ | ------------------- | -------- |
+| APP_PASSWORD  | 登录密码   | admin123            | 生产环境必须修改 |
+| JWT_SECRET    | JWT密钥  | your_jwt_secret_key | 使用随机字符串  |
+| WORKSPACE_DIR | 工作目录   | /app/workspace      | 建议保持默认   |
+| ALLOW_ORIGINS | CORS配置 | *                   | 生产环境应限制  |
+| TZ            | 时区设置   | Asia/Shanghai       | 按需修改     |
 
 ### 用户权限配置
 
 支持两种权限配置方式：
 
 1. **动态用户权限**（推荐）：
-```yaml
-# docker-compose.yml
-user: "${UID}:${GID}"
-```
+   
+   ```yaml
+   # docker-compose.yml
+   user: "${UID}:${GID}"
+   ```
 
 2. **固定用户权限**：
-```yaml
-# docker-compose.yml
-user: "1000:1000"
-```
+   
+   ```yaml
+   # docker-compose.yml
+   user: "1000:1000"
+   ```
 
 ### 权限问题处理
 
 如果遇到权限问题，请按以下步骤排查：
 
 1. 检查权限：
-```bash
-# 查看容器用户
-docker exec yamleditor id
+   
+   ```bash
+   # 查看容器用户
+   docker exec yamleditor id
+   ```
 
 # 查看目录权限
-ls -la workspace/
-```
 
+ls -la workspace/
+
+```
 2. 修复权限：
 ```bash
 # 使用当前用户
@@ -121,17 +127,20 @@ sudo chown -R 1000:1000 workspace/
 ## 生产环境建议
 
 1. **安全配置**：
+   
    - 使用强密码和随机JWT密钥
    - 限制CORS来源
    - 使用固定的非root用户
    - 配置安全的网络环境
 
 2. **数据管理**：
+   
    - 定期备份workspace目录
    - 监控磁盘使用情况
    - 设置日志轮转策略
 
 3. **性能优化**：
+   
    - 适当调整容器资源限制
    - 监控容器状态
    - 根据需求调整历史版本保留数量

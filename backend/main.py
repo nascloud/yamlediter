@@ -13,6 +13,7 @@ from jose import JWTError, jwt
 from dotenv import load_dotenv
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+import platform
 
 # 加载环境变量
 load_dotenv()
@@ -35,6 +36,7 @@ APP_PASSWORD = os.getenv("APP_PASSWORD", "admin123")
 JWT_SECRET = os.getenv("JWT_SECRET", "your_jwt_secret_key")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION = 24  # token有效期（小时）
+SKIP_AUTH = os.getenv("SKIP_AUTH", "false").lower() == "true"  # 开发环境可设置为true跳过认证
 
 # 工作目录配置
 WORKSPACE_DIR = os.getenv("WORKSPACE_DIR", "/app/workspace")
@@ -42,27 +44,25 @@ CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "app_config.json")
 
 def init_workspace():
-    """初始化工作目录和配置"""
     try:
-        # 确保配置目录存在
-        os.makedirs(CONFIG_DIR, exist_ok=True)
+        workspace_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "workspace")
         
-        # 确保工作目录存在
-        os.makedirs(WORKSPACE_DIR, exist_ok=True)
-        
-        # 确保历史目录存在
-        history_dir = os.path.join(WORKSPACE_DIR, "history")
-        os.makedirs(history_dir, exist_ok=True)
-        
-        # 设置目录权限（如果不是root用户）
-        if os.getuid() != 0:
-            os.chmod(WORKSPACE_DIR, 0o755)
-            os.chmod(history_dir, 0o755)
+        # 跨平台获取当前用户
+        if platform.system() == "Windows":
+            import getpass
+            current_user = getpass.getuser()
+        else:
+            current_user = str(os.getuid())
             
-        return True
+        user_workspace = os.path.join(workspace_dir, current_user)
+        
+        if not os.path.exists(user_workspace):
+            os.makedirs(user_workspace)
+            
+        return user_workspace
     except Exception as e:
-        print(f"初始化工作目录失败: {e}")
-        return False
+        print(f"初始化工作目录失败: {str(e)}")
+        return None
 
 # 初始化工作目录
 init_workspace()
@@ -85,6 +85,10 @@ def create_access_token(data: dict):
 
 # 验证JWT token
 async def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
+    # 开发环境可跳过认证
+    if SKIP_AUTH:
+        return {"sub": "dev_user"}
+        
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload
@@ -645,4 +649,8 @@ async def login(request: LoginRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+@app.get("/")
+async def read_root(): 
+    return {"message": "YAML编辑器API已启动"} 

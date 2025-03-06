@@ -8,7 +8,16 @@
       :close-on-click-modal="false"
       :close-on-press-escape="false"
       :show-close="false"
+      class="login-dialog"
     >
+      <div v-if="loginError" class="login-error-message">
+        <el-alert
+          :title="loginError"
+          type="error"
+          show-icon
+          :closable="false"
+        />
+      </div>
       <el-form :model="loginForm" @submit.prevent="login">
         <el-form-item>
           <el-input
@@ -16,12 +25,15 @@
             type="password"
             placeholder="请输入密码"
             @keyup.enter="login"
+            :disabled="isLoggingIn"
           />
         </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
-          <el-button type="primary" @click="login">登录</el-button>
+          <el-button type="primary" @click="login" :loading="isLoggingIn">
+            {{ isLoggingIn ? '登录中...' : '登录' }}
+          </el-button>
         </span>
       </template>
     </el-dialog>
@@ -353,9 +365,19 @@ const loginDialogVisible = ref(true)
 const loginForm = ref({
   password: ''
 })
+const isLoggingIn = ref(false)
+const loginError = ref('')
 
 // 登录方法
 const login = async () => {
+  if (!loginForm.value.password.trim()) {
+    loginError.value = '请输入密码'
+    return
+  }
+  
+  isLoggingIn.value = true
+  loginError.value = ''
+  
   try {
     const response = await fetch(`${apiBaseUrl}/api/login`, {
       method: 'POST',
@@ -378,7 +400,10 @@ const login = async () => {
     await initializeApp()
   } catch (error) {
     console.error('登录失败:', error)
-    ElMessage.error('密码错误')
+    loginError.value = '密码错误，请重试'
+    loginForm.value.password = '' // 清空密码输入框
+  } finally {
+    isLoggingIn.value = false
   }
 }
 
@@ -415,15 +440,31 @@ const getAuthHeaders = () => {
   }
 }
 
+// 处理API响应的通用函数
+const handleApiResponse = async (response: Response, errorMessage: string) => {
+  if (response.status === 401) {
+    // 认证失败，显示登录对话框
+    ElMessage.error('认证已过期，请重新登录')
+    isAuthenticated.value = false
+    loginDialogVisible.value = true
+    loginError.value = '认证已过期，请重新登录'
+    localStorage.removeItem('token') // 清除无效的token
+    throw { status: 401, message: '认证已过期，请重新登录' }
+  }
+  
+  if (!response.ok) {
+    throw { status: response.status, message: `${errorMessage}: ${response.status}` }
+  }
+  
+  return await response.json()
+}
+
 const api = {
   async listFiles(search = '') {
     const response = await fetch(`${apiBaseUrl}/api/files?search=${search}`, {
       headers: getAuthHeaders()
     })
-    if (!response.ok) {
-      throw { status: response.status, message: `获取文件列表失败: ${response.status}` }
-    }
-    return await response.json()
+    return handleApiResponse(response, '获取文件列表失败')
   },
 
   async readFile(path: string) {
@@ -431,10 +472,7 @@ const api = {
     const response = await fetch(`${apiBaseUrl}/api/file/${path}`, {
       headers: getAuthHeaders()
     })
-    if (!response.ok) {
-      throw { status: response.status, message: `读取文件失败: ${response.status}` }
-    }
-    return await response.json()
+    return handleApiResponse(response, '读取文件失败')
   },
 
   async saveFile(path: string, content: string) {
@@ -444,54 +482,42 @@ const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ content })
     })
-    if (!response.ok) {
-      throw { status: response.status, message: `保存文件失败: ${response.status}` }
-    }
-    return await response.json()
+    return handleApiResponse(response, '保存文件失败')
   },
 
   async deleteFile(path: string) {
     path = normalizePath(path)
     const response = await fetch(`${apiBaseUrl}/api/file/${path}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: getAuthHeaders()
     })
-    if (!response.ok) {
-      throw { status: response.status, message: `删除失败: ${response.status}` }
-    }
-    return await response.json()
+    return handleApiResponse(response, '删除失败')
   },
 
   async getWorkspaceDir() {
-    const response = await fetch(`${apiBaseUrl}/api/config/workspace`)
-    if (!response.ok) {
-      throw { status: response.status, message: `获取工作目录失败: ${response.status}` }
-    }
-    return await response.json()
+    const response = await fetch(`${apiBaseUrl}/api/config/workspace`, {
+      headers: getAuthHeaders()
+    })
+    return handleApiResponse(response, '获取工作目录失败')
   },
 
   async setWorkspaceDir(path: string) {
     const response = await fetch(`${apiBaseUrl}/api/config/workspace`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ path })
     })
-    if (!response.ok) {
-      throw { status: response.status, message: `设置工作目录失败: ${response.status}` }
-    }
-    return await response.json()
+    return handleApiResponse(response, '设置工作目录失败')
   },
 
   async createDirectory(path: string) {
     path = normalizePath(path)
     const response = await fetch(`${apiBaseUrl}/api/directory`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ path })
     })
-    if (!response.ok) {
-      throw { status: response.status, message: `创建目录失败: ${response.status}` }
-    }
-    return await response.json()
+    return handleApiResponse(response, '创建目录失败')
   },
   
   async moveFile(sourcePath: string, targetPath: string) {
@@ -499,18 +525,17 @@ const api = {
     targetPath = normalizePath(targetPath)
     const response = await fetch(`${apiBaseUrl}/api/file/move`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ source_path: sourcePath, target_path: targetPath })
     })
-    if (!response.ok) {
-      throw { status: response.status, message: `移动文件失败: ${response.status}` }
-    }
-    return await response.json()
+    return handleApiResponse(response, '移动文件失败')
   },
 
   async fileExists(path: string) {
     path = normalizePath(path)
-    const response = await fetch(`${apiBaseUrl}/api/file/${path}`)
+    const response = await fetch(`${apiBaseUrl}/api/file/${path}`, {
+      headers: getAuthHeaders()
+    })
     return response.ok
   },
 
@@ -518,10 +543,7 @@ const api = {
     const response = await fetch(`${apiBaseUrl}/api/history`, {
       headers: getAuthHeaders()
     })
-    if (!response.ok) {
-      throw { status: response.status, message: `获取历史文件失败: ${response.status}` }
-    }
-    return await response.json()
+    return handleApiResponse(response, '获取历史文件失败')
   },
 
   async readHistoryFile(path: string) {
@@ -529,10 +551,7 @@ const api = {
     const response = await fetch(`${apiBaseUrl}/api/history/${path}`, {
       headers: getAuthHeaders()
     })
-    if (!response.ok) {
-      throw { status: response.status, message: `读取历史文件失败: ${response.status}` }
-    }
-    return await response.json()
+    return handleApiResponse(response, '读取历史文件失败')
   },
 }
 
@@ -1277,7 +1296,12 @@ onMounted(async () => {
   if (token) {
     isAuthenticated.value = true
     loginDialogVisible.value = false
-    await initializeApp()
+    try {
+      await initializeApp()
+    } catch (error: any) {
+      // 如果初始化过程中出现401错误，会在handleApiResponse中处理
+      console.error('应用初始化失败:', error)
+    }
   } else {
     loginDialogVisible.value = true
   }
@@ -1632,6 +1656,10 @@ onBeforeUnmount(() => {
   
   .el-input {
     margin: 20px 0;
+  }
+  
+  .login-error-message {
+    margin-bottom: 15px;
   }
 }
 </style> 

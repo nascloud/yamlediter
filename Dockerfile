@@ -1,6 +1,7 @@
 # 使用多阶段构建
+
 # 第一阶段：安装依赖
-FROM python:3.9-slim as builder
+FROM python:3.9-slim AS builder
 
 # 设置工作目录
 WORKDIR /app
@@ -15,7 +16,7 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt --target=/app/packages
 
 # 第二阶段：构建最终镜像
-FROM python:3.9-slim-bullseye as final
+FROM python:3.9-slim-bullseye AS final
 
 # 设置工作目录
 WORKDIR /app
