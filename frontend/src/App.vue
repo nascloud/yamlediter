@@ -69,6 +69,21 @@
           <div class="workspace-path">{{ workspacePath }}</div>
         </div>
 
+        <!-- Mihomo控制台 -->
+        <div class="mihomo-console">
+          <div class="workspace-title">
+            <el-icon><Setting /></el-icon>
+            <span>Mihomo控制台</span>
+          </div>
+          <el-input v-model="mihomoAddress" placeholder="请输入Mihomo地址，例如 127.0.0.1:9090"></el-input>
+          <div class="mihomo-actions">
+            <el-button @click="saveMihomoAddress" size="small">保存</el-button>
+            <el-button @click="toggleMihomoView" size="small" :disabled="!mihomoAddress">
+              {{ mihomoViewVisible ? '关闭' : '查看' }}
+            </el-button>
+          </div>
+        </div>
+
         <!-- 工具栏 -->
         <div class="toolbar">
           <el-button-group>
@@ -214,6 +229,9 @@
           </div>
           <div class="toolbar-actions">
             <el-button-group>
+              <el-button @click="formatYAML" :disabled="!currentFile">
+                <el-icon><MagicStick /></el-icon> 格式校验
+              </el-button>
               <el-button type="primary" @click="saveFile" :disabled="!currentFile">
                 <el-icon><Check /></el-icon> 保存
               </el-button>
@@ -241,6 +259,15 @@
             <el-icon><Clock /></el-icon>
             <span>{{ historyFiles.length }}个历史版本</span>
           </div>
+          <div class="status-item status-error" v-if="formatError">
+            <el-icon><CircleCloseFilled /></el-icon>
+            <span>{{ formatError }}</span>
+          </div>
+        </div>
+
+        <!-- Mihomo UI Iframe -->
+        <div v-if="mihomoViewVisible" class="mihomo-iframe-container">
+          <iframe :src="mihomoUrl" frameborder="0"></iframe>
         </div>
       </main>
     </div>
@@ -295,6 +322,7 @@ import { ref, onMounted, watch, onBeforeUnmount, nextTick, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as monaco from 'monaco-editor'
 import { useElementSize } from '@vueuse/core'
+import yaml from 'js-yaml'
 
 // 类型定义
 interface HistoryFileInfo {
@@ -310,6 +338,7 @@ interface FileInfo {
   name: string
   isDirectory: boolean
   children?: FileInfo[]
+  isHistoryFile?: boolean
 }
 
 // 状态定义
@@ -322,6 +351,10 @@ const expandedKeys = ref<string[]>([])
 const workspacePath = ref('')
 const lastSaved = ref('未保存')
 const isDarkMode = ref(true)
+const formatError = ref('')
+const mihomoAddress = ref('')
+const mihomoViewVisible = ref(false)
+const mihomoUrl = computed(() => mihomoAddress.value ? `${apiBaseUrl}/api/mihomo/proxy/ui/` : '')
 
 // 文件树引用
 const fileTreeRef = ref(null)
@@ -423,6 +456,9 @@ const initializeApp = async () => {
     
     // 加载历史文件列表
     await loadHistoryFiles()
+    
+    // 加载Mihomo地址
+    await loadMihomoAddress()
     
     ElMessage.success('初始化完成')
   } catch (error) {
@@ -553,6 +589,55 @@ const api = {
     })
     return handleApiResponse(response, '读取历史文件失败')
   },
+
+  async getMihomoAddress() {
+    const response = await fetch(`${apiBaseUrl}/api/config/mihomo`, {
+      headers: getAuthHeaders()
+    })
+    return handleApiResponse(response, '获取Mihomo地址失败')
+  },
+
+  async setMihomoAddress(address: string) {
+    const response = await fetch(`${apiBaseUrl}/api/config/mihomo`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ address })
+    })
+    return handleApiResponse(response, '设置Mihomo地址失败')
+  },
+
+}
+
+// Mihomo相关方法
+const loadMihomoAddress = async () => {
+  try {
+    const result = await api.getMihomoAddress()
+    mihomoAddress.value = result.address
+  } catch (error) {
+    console.error('加载Mihomo地址失败:', error)
+  }
+}
+
+const saveMihomoAddress = async () => {
+  try {
+    // 清理地址，移除协议头和/ui路径
+    const cleanedAddress = mihomoAddress.value
+      .replace(/^https?:\/\//, '')
+      .replace(/\/ui\/?$/, '')
+      .replace(/\/$/, '');
+      
+    await api.setMihomoAddress(cleanedAddress)
+    mihomoAddress.value = cleanedAddress // 更新输入框中的值
+    ElMessage.success('Mihomo地址保存成功')
+  } catch (error: any) {
+    console.error('保存Mihomo地址失败:', error)
+    ElMessage.error(`保存失败: ${error.message}`)
+  }
+}
+
+
+const toggleMihomoView = () => {
+  mihomoViewVisible.value = !mihomoViewVisible.value
 }
 
 // 初始化编辑器
@@ -654,6 +739,9 @@ const handleFileSelect = async (file: FileInfo) => {
     updateEditorContent(content)
     updateRecentFiles(file)
     lastSaved.value = '刚刚加载'
+    if (editor) {
+      monaco.editor.setModelMarkers(editor.getModel()!, 'yaml', [])
+    }
   } catch (error) {
     console.error('读取文件失败:', error)
     ElMessage.error('读取文件失败')
@@ -667,6 +755,9 @@ const handleRecentFileClick = async (file: FileInfo) => {
     editorContent.value = content
     updateEditorContent(content)
     lastSaved.value = '刚刚加载'
+    if (editor) {
+      monaco.editor.setModelMarkers(editor.getModel()!, 'yaml', [])
+    }
   } catch (error) {
     console.error('读取文件失败:', error)
     ElMessage.error('读取文件失败')
@@ -902,6 +993,44 @@ const exportFile = () => {
   ElMessage.success('导出成功')
 }
 
+const formatYAML = async () => {
+  if (!currentFile.value) {
+    ElMessage.warning('请先选择一个文件')
+    return
+  }
+  try {
+    formatError.value = ''
+    if (editor) {
+      monaco.editor.setModelMarkers(editor.getModel()!, 'yaml', [])
+    }
+    // 在前端解析和格式化YAML
+    const data = yaml.load(editorContent.value)
+    const formattedContent = yaml.dump(data, { indent: 2 })
+    editorContent.value = formattedContent
+    updateEditorContent(formattedContent)
+    ElMessage.success('YAML格式化成功')
+  } catch (error: any) {
+    console.error('格式化失败:', error)
+    // 显示更详细的错误信息
+    if (error.name === 'YAMLException') {
+      formatError.value = `YAML格式错误: ${error.message}`
+      if (editor && error.mark) {
+        const { line, column } = error.mark
+        monaco.editor.setModelMarkers(editor.getModel()!, 'yaml', [{
+          startLineNumber: line + 1,
+          startColumn: column + 1,
+          endLineNumber: line + 1,
+          endColumn: editor.getModel()!.getLineLength(line + 1) + 1,
+          message: error.message,
+          severity: monaco.MarkerSeverity.Error
+        }])
+      }
+    } else {
+      formatError.value = `格式化失败: ${error.message}`
+    }
+  }
+}
+
 // 判断节点是否展开
 const isExpanded = (node: FileInfo) => {
   return expandedKeys.value.includes(node.path)
@@ -1019,7 +1148,7 @@ const deleteContextMenuNode = async () => {
     
     // 从最近文件中移除
     if (!isDir) {
-      recentFiles.value = recentFiles.value.filter(f => f.path !== contextMenuNode.value.path)
+      recentFiles.value = recentFiles.value.filter(f => f.path !== contextMenuNode.value!.path)
     }
     
     // 如果删除的是当前文件，清空编辑器
@@ -1324,6 +1453,47 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.mihomo-console {
+  background-color: var(--card-bg);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+}
+
+.mihomo-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mihomo-iframe-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80vw;
+  height: 80vh;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+  z-index: 2000;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.close-iframe-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2001; /* Ensure it's above the iframe */
+}
+
+.mihomo-iframe-container iframe {
+  width: 100%;
+  height: 100%;
+}
+
 .app-container {
   height: 100vh;
   display: flex;
@@ -1624,6 +1794,10 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.5rem;
   color: var(--text-light);
+}
+
+.status-error {
+  color: var(--danger-color);
 }
 
 /* 动画效果 */

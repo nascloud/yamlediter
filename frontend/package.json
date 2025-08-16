@@ -10,6 +10,7 @@
   "dependencies": {
     "@vueuse/core": "^10.6.1",
     "element-plus": "^2.4.2",
+    "js-yaml": "^4.1.0",
     "monaco-editor": "^0.45.0",
     "monaco-editor-webpack-plugin": "^7.1.0",
     "pinia": "^2.1.7",
@@ -17,6 +18,7 @@
     "vue-router": "^4.2.5"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.9.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "typescript": "^5.2.2",
