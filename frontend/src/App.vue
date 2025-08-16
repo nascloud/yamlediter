@@ -214,6 +214,9 @@
           </div>
           <div class="toolbar-actions">
             <el-button-group>
+              <el-button @click="formatYAML" :disabled="!currentFile">
+                <el-icon><MagicStick /></el-icon> 格式校验
+              </el-button>
               <el-button type="primary" @click="saveFile" :disabled="!currentFile">
                 <el-icon><Check /></el-icon> 保存
               </el-button>
@@ -240,6 +243,10 @@
           <div class="status-item" v-if="currentFile">
             <el-icon><Clock /></el-icon>
             <span>{{ historyFiles.length }}个历史版本</span>
+          </div>
+          <div class="status-item status-error" v-if="formatError">
+            <el-icon><CircleCloseFilled /></el-icon>
+            <span>{{ formatError }}</span>
           </div>
         </div>
       </main>
@@ -295,6 +302,7 @@ import { ref, onMounted, watch, onBeforeUnmount, nextTick, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as monaco from 'monaco-editor'
 import { useElementSize } from '@vueuse/core'
+import yaml from 'js-yaml'
 
 // 类型定义
 interface HistoryFileInfo {
@@ -310,6 +318,7 @@ interface FileInfo {
   name: string
   isDirectory: boolean
   children?: FileInfo[]
+  isHistoryFile?: boolean
 }
 
 // 状态定义
@@ -322,6 +331,7 @@ const expandedKeys = ref<string[]>([])
 const workspacePath = ref('')
 const lastSaved = ref('未保存')
 const isDarkMode = ref(true)
+const formatError = ref('')
 
 // 文件树引用
 const fileTreeRef = ref(null)
@@ -553,6 +563,7 @@ const api = {
     })
     return handleApiResponse(response, '读取历史文件失败')
   },
+
 }
 
 // 初始化编辑器
@@ -654,6 +665,9 @@ const handleFileSelect = async (file: FileInfo) => {
     updateEditorContent(content)
     updateRecentFiles(file)
     lastSaved.value = '刚刚加载'
+    if (editor) {
+      monaco.editor.setModelMarkers(editor.getModel()!, 'yaml', [])
+    }
   } catch (error) {
     console.error('读取文件失败:', error)
     ElMessage.error('读取文件失败')
@@ -667,6 +681,9 @@ const handleRecentFileClick = async (file: FileInfo) => {
     editorContent.value = content
     updateEditorContent(content)
     lastSaved.value = '刚刚加载'
+    if (editor) {
+      monaco.editor.setModelMarkers(editor.getModel()!, 'yaml', [])
+    }
   } catch (error) {
     console.error('读取文件失败:', error)
     ElMessage.error('读取文件失败')
@@ -902,6 +919,44 @@ const exportFile = () => {
   ElMessage.success('导出成功')
 }
 
+const formatYAML = async () => {
+  if (!currentFile.value) {
+    ElMessage.warning('请先选择一个文件')
+    return
+  }
+  try {
+    formatError.value = ''
+    if (editor) {
+      monaco.editor.setModelMarkers(editor.getModel()!, 'yaml', [])
+    }
+    // 在前端解析和格式化YAML
+    const data = yaml.load(editorContent.value)
+    const formattedContent = yaml.dump(data, { indent: 2 })
+    editorContent.value = formattedContent
+    updateEditorContent(formattedContent)
+    ElMessage.success('YAML格式化成功')
+  } catch (error: any) {
+    console.error('格式化失败:', error)
+    // 显示更详细的错误信息
+    if (error.name === 'YAMLException') {
+      formatError.value = `YAML格式错误: ${error.message}`
+      if (editor && error.mark) {
+        const { line, column } = error.mark
+        monaco.editor.setModelMarkers(editor.getModel()!, 'yaml', [{
+          startLineNumber: line + 1,
+          startColumn: column + 1,
+          endLineNumber: line + 1,
+          endColumn: editor.getModel()!.getLineLength(line + 1) + 1,
+          message: error.message,
+          severity: monaco.MarkerSeverity.Error
+        }])
+      }
+    } else {
+      formatError.value = `格式化失败: ${error.message}`
+    }
+  }
+}
+
 // 判断节点是否展开
 const isExpanded = (node: FileInfo) => {
   return expandedKeys.value.includes(node.path)
@@ -1019,7 +1074,7 @@ const deleteContextMenuNode = async () => {
     
     // 从最近文件中移除
     if (!isDir) {
-      recentFiles.value = recentFiles.value.filter(f => f.path !== contextMenuNode.value.path)
+      recentFiles.value = recentFiles.value.filter(f => f.path !== contextMenuNode.value!.path)
     }
     
     // 如果删除的是当前文件，清空编辑器
@@ -1624,6 +1679,10 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.5rem;
   color: var(--text-light);
+}
+
+.status-error {
+  color: var(--danger-color);
 }
 
 /* 动画效果 */
