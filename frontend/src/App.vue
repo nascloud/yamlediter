@@ -69,6 +69,21 @@
           <div class="workspace-path">{{ workspacePath }}</div>
         </div>
 
+        <!-- Mihomo控制台 -->
+        <div class="mihomo-console">
+          <div class="workspace-title">
+            <el-icon><Setting /></el-icon>
+            <span>Mihomo控制台</span>
+          </div>
+          <el-input v-model="mihomoAddress" placeholder="请输入Mihomo地址，例如 127.0.0.1:9090"></el-input>
+          <div class="mihomo-actions">
+            <el-button @click="saveMihomoAddress" size="small">保存</el-button>
+            <el-button @click="toggleMihomoView" size="small" :disabled="!mihomoAddress">
+              {{ mihomoViewVisible ? '关闭' : '查看' }}
+            </el-button>
+          </div>
+        </div>
+
         <!-- 工具栏 -->
         <div class="toolbar">
           <el-button-group>
@@ -249,6 +264,11 @@
             <span>{{ formatError }}</span>
           </div>
         </div>
+
+        <!-- Mihomo UI Iframe -->
+        <div v-if="mihomoViewVisible" class="mihomo-iframe-container">
+          <iframe :src="mihomoUrl" frameborder="0"></iframe>
+        </div>
       </main>
     </div>
 
@@ -332,6 +352,9 @@ const workspacePath = ref('')
 const lastSaved = ref('未保存')
 const isDarkMode = ref(true)
 const formatError = ref('')
+const mihomoAddress = ref('')
+const mihomoViewVisible = ref(false)
+const mihomoUrl = computed(() => mihomoAddress.value ? `${apiBaseUrl}/api/mihomo/proxy/ui/` : '')
 
 // 文件树引用
 const fileTreeRef = ref(null)
@@ -433,6 +456,9 @@ const initializeApp = async () => {
     
     // 加载历史文件列表
     await loadHistoryFiles()
+    
+    // 加载Mihomo地址
+    await loadMihomoAddress()
     
     ElMessage.success('初始化完成')
   } catch (error) {
@@ -564,6 +590,54 @@ const api = {
     return handleApiResponse(response, '读取历史文件失败')
   },
 
+  async getMihomoAddress() {
+    const response = await fetch(`${apiBaseUrl}/api/config/mihomo`, {
+      headers: getAuthHeaders()
+    })
+    return handleApiResponse(response, '获取Mihomo地址失败')
+  },
+
+  async setMihomoAddress(address: string) {
+    const response = await fetch(`${apiBaseUrl}/api/config/mihomo`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ address })
+    })
+    return handleApiResponse(response, '设置Mihomo地址失败')
+  },
+
+}
+
+// Mihomo相关方法
+const loadMihomoAddress = async () => {
+  try {
+    const result = await api.getMihomoAddress()
+    mihomoAddress.value = result.address
+  } catch (error) {
+    console.error('加载Mihomo地址失败:', error)
+  }
+}
+
+const saveMihomoAddress = async () => {
+  try {
+    // 清理地址，移除协议头和/ui路径
+    const cleanedAddress = mihomoAddress.value
+      .replace(/^https?:\/\//, '')
+      .replace(/\/ui\/?$/, '')
+      .replace(/\/$/, '');
+      
+    await api.setMihomoAddress(cleanedAddress)
+    mihomoAddress.value = cleanedAddress // 更新输入框中的值
+    ElMessage.success('Mihomo地址保存成功')
+  } catch (error: any) {
+    console.error('保存Mihomo地址失败:', error)
+    ElMessage.error(`保存失败: ${error.message}`)
+  }
+}
+
+
+const toggleMihomoView = () => {
+  mihomoViewVisible.value = !mihomoViewVisible.value
 }
 
 // 初始化编辑器
@@ -1379,6 +1453,47 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.mihomo-console {
+  background-color: var(--card-bg);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+}
+
+.mihomo-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mihomo-iframe-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80vw;
+  height: 80vh;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+  z-index: 2000;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.close-iframe-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2001; /* Ensure it's above the iframe */
+}
+
+.mihomo-iframe-container iframe {
+  width: 100%;
+  height: 100%;
+}
+
 .app-container {
   height: 100vh;
   display: flex;

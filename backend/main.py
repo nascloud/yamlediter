@@ -1,19 +1,20 @@
-from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi import FastAPI, HTTPException, Depends, Security, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 import yaml
 import os
 import json
 import shutil
 from datetime import datetime, timedelta
-from pathlib import Path
 from jose import JWTError, jwt
 from dotenv import load_dotenv
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import platform
+import httpx
+from urllib.parse import urlparse
 
 # 加载环境变量
 load_dotenv()
@@ -135,6 +136,9 @@ class DirectoryConfig(BaseModel):
 class FileMove(BaseModel):
     source_path: str
     target_path: str
+
+class MihomoConfig(BaseModel):
+    address: str
 
 # 读取配置
 def get_config():
@@ -320,6 +324,70 @@ async def get_current_workspace():
     """获取当前工作目录"""
     workspace_dir = get_workspace_dir()
     return {"path": workspace_dir}
+
+@app.post("/api/config/mihomo")
+async def set_mihomo_address(config: MihomoConfig, token: dict = Depends(verify_token)):
+    """设置Mihomo地址"""
+    try:
+        current_config = get_config()
+        current_config["mihomo_address"] = config.address
+        
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(current_config, f, ensure_ascii=False, indent=2)
+        
+        return {"message": "Mihomo地址设置成功", "address": config.address}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/config/mihomo")
+async def get_mihomo_address(token: dict = Depends(verify_token)):
+    """获取Mihomo地址"""
+    config = get_config()
+    address = config.get("mihomo_address", "")
+    return {"address": address}
+
+# Mihomo代理
+@app.api_route("/api/mihomo/proxy/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def mihomo_proxy(path: str, request: Request):
+    """代理Mihomo API请求"""
+    config = get_config()
+    mihomo_address = config.get("mihomo_address")
+
+    if not mihomo_address:
+        raise HTTPException(status_code=400, detail="Mihomo地址未配置")
+
+    # 解析Mihomo地址
+    if not mihomo_address.startswith(('http://', 'https://')):
+        mihomo_address = f"http://{mihomo_address}"
+    
+    parsed_uri = urlparse(mihomo_address)
+    host = parsed_uri.netloc
+    
+    url = f"http://{host}/{path}"
+    
+    headers = {key: value for key, value in request.headers.items() if key.lower() not in ['host', 'authorization']}
+    headers['Host'] = host
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            if request.method == "GET":
+                response = await client.get(url, headers=headers, params=request.query_params)
+            elif request.method == "POST":
+                body = await request.body()
+                response = await client.post(url, headers=headers, content=body)
+            elif request.method == "PUT":
+                body = await request.body()
+                response = await client.put(url, headers=headers, content=body)
+            elif request.method == "DELETE":
+                response = await client.delete(url, headers=headers)
+            else:
+                raise HTTPException(status_code=405, detail="Method Not Allowed")
+
+        return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=500, detail=f"请求Mihomo API失败: {e}")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Mihomo API返回错误: {e.response.text}")
 
 # 递归获取目录结构
 def get_directory_structure(dir_path, base_path):
