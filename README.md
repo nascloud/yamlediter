@@ -129,6 +129,21 @@ docker-compose up -d
 
 如有问题或建议，请访问项目GitHub仓库提交issue。
 
+## CI/CD自动化构建
+
+本项目使用GitHub Actions实现自动化构建和部署：
+
+- 当推送到`main`分支时，自动构建Docker镜像并推送到DockerHub
+- 当创建新的Git标签时，自动构建并推送带标签的Docker镜像
+- Pull Request时会进行构建测试但不会推送到DockerHub
+
+### 配置说明
+
+需要在GitHub仓库的Secrets中配置以下环境变量：
+
+- `DOCKER_HUB_USERNAME`: DockerHub用户名
+- `DOCKER_HUB_ACCESS_TOKEN`: DockerHub访问令牌
+
 ## 许可证
 
-MIT License 
+MIT License

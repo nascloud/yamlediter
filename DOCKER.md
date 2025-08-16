@@ -153,4 +153,9 @@ sudo chown -R 1000:1000 workspace/
 
 ## 问题反馈
 
-如有问题或建议，请访问项目GitHub仓库提交issue。 
+如有问题或建议，请访问项目GitHub仓库提交issue。
+
+## 自动化构建
+
+本项目使用GitHub Actions实现Docker镜像的自动化构建和推送。
+详细配置说明请参考 [DOCKER_BUILD.md](DOCKER_BUILD.md) 文件。
